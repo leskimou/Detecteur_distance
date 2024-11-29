@@ -1,0 +1,76 @@
+import customtkinter as ctk
+import serial
+import time
+import matplotlib.pyplot as plt
+from tkinter import messagebox
+
+# Paramètres de la connexion série (à ajuster selon votre configuration)
+port = 'COM3'
+baudrate = 9600
+
+# Création de la fenêtre principale
+root = ctk.CTk()
+root.title("Contrôle de la collecte des données")
+root.geometry("400x300")
+
+# Fonctions pour obtenir les valeurs utilisateur
+def get_acquisition_time():
+    return int(acquisition_time_entry.get())
+
+def get_number_of_trials():
+    return int(number_of_trials_entry.get())
+
+# Fonction de collecte de données
+def start_collecting():
+    try:
+        acquisition_time = get_acquisition_time()
+        num_trials = get_number_of_trials()
+
+        for trial in range(1, num_trials + 1):
+            file_name = f"data_essai_{trial}.txt"
+            values = []
+            indices = []
+
+            # Ouvrir la connexion série ici
+            with serial.Serial(port, baudrate) as ser:
+                start_time = time.time()
+                index = 1
+                while time.time() - start_time < acquisition_time:
+                    line = ser.readline().decode('utf-8').rstrip()
+                    if line:
+                        value = float(line)  # Convertir la valeur en float
+                        values.append(value)
+                        indices.append(index)
+                        index += 1
+                        time.sleep(0.1)
+
+            # Enregistrer les données dans un fichier
+            with open(file_name, 'a') as file:
+                file.write("Valeur;Indice\n")
+                for value, index in zip(values, indices):
+                    file.write(f"{value};{index}\n")
+
+            # Tracer le graphique
+            plt.plot(indices, values)
+            plt.xlabel('Indice')
+            plt.ylabel('Valeur')
+            plt.title(f"Essai {trial}")
+            plt.show()
+
+        messagebox.showinfo("Succès", "Collecte terminée")
+    except ValueError:
+        messagebox.showerror("Erreur", "Veuillez entrer des valeurs numériques valides.")
+
+# Création des éléments de l'interface graphique
+ctk.CTkLabel(root, text="Durée d'acquisition (secondes) :").pack(pady=10)
+acquisition_time_entry = ctk.CTkEntry(root)
+acquisition_time_entry.pack(pady=5)
+
+ctk.CTkLabel(root, text="Nombre d'essais :").pack(pady=10)
+number_of_trials_entry = ctk.CTkEntry(root)
+number_of_trials_entry.pack(pady=5)
+
+start_button = ctk.CTkButton(root, text="Démarrer la collecte", command=start_collecting)
+start_button.pack(pady=20)
+
+root.mainloop()
