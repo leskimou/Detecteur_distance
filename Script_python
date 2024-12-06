@@ -1,17 +1,18 @@
 import customtkinter as ctk
 import serial
 import time
+import os
 import matplotlib.pyplot as plt
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 # Paramètres de la connexion série (à ajuster selon votre configuration)
-port = 'COM3'
+port = 'COM7'
 baudrate = 9600
 
 # Création de la fenêtre principale
 root = ctk.CTk()
 root.title("Contrôle de la collecte des données")
-root.geometry("400x300")
+root.geometry("500x500")
 
 # Fonctions pour obtenir les valeurs utilisateur
 def get_acquisition_time():
@@ -28,12 +29,31 @@ def get_number_of_trials():
         messagebox.showerror("Erreur", "Veuillez entrer un entier valide pour le nombre d'essais.")
         return None
 
+def get_file_prefix():
+    return file_prefix_entry.get().strip()
+
+def get_output_directory():
+    directory = output_directory_entry.get().strip()
+    if not os.path.isdir(directory):
+        messagebox.showerror("Erreur", f"Le répertoire spécifié n'existe pas : {directory}")
+        return None
+    return directory
+
+# Fonction pour choisir un répertoire
+def browse_directory():
+    directory = filedialog.askdirectory()
+    if directory:
+        output_directory_entry.delete(0, ctk.END)
+        output_directory_entry.insert(0, directory)
+
 # Fonction pour collecter les données et afficher le graphique
 def start_collecting_and_plot():
     acquisition_time = get_acquisition_time()
     num_trials = get_number_of_trials()
+    prefix = get_file_prefix()
+    output_directory = get_output_directory()
 
-    if acquisition_time is None or num_trials is None:
+    if acquisition_time is None or num_trials is None or output_directory is None:
         return  # Arrêter si les entrées ne sont pas valides
 
     fichiers = []
@@ -48,7 +68,7 @@ def start_collecting_and_plot():
                     messagebox.showinfo("Collecte interrompue", "La collecte des données a été interrompue.")
                     break
 
-            file_name = f"data_essai_{trial}.txt"
+            file_name = os.path.join(output_directory, f"{prefix}_data_essai_{trial}.txt")
             fichiers.append(file_name)  # Ajouter le fichier à la liste pour le traçage
             values = []
             indices = []
@@ -90,7 +110,6 @@ def start_collecting_and_plot():
 
 # Fonction pour tracer le graphique
 def plot_graph(fichiers):
-    # Fonction pour lire les données d'un fichier
     def lire_donnees(fichier):
         x = []
         y = []
@@ -99,7 +118,7 @@ def plot_graph(fichiers):
                 next(f)  # Ignorer la première ligne (en-tête)
                 for ligne in f:
                     valeurs = ligne.strip().split()
-                    if len(valeurs) == 2:  # On s'assure qu'il y a deux colonnes
+                    if len(valeurs) == 2:
                         x.append(int(valeurs[0]))
                         y.append(float(valeurs[1]))
         except FileNotFoundError:
@@ -109,24 +128,18 @@ def plot_graph(fichiers):
         return x, y
 
     legendes = [f"Essai {i}" for i in range(1, len(fichiers) + 1)]
-
-    # Création de la figure
     plt.figure(figsize=(10, 6))
 
-    # Lecture et traçage des données
     for i, fichier in enumerate(fichiers):
         x, y = lire_donnees(fichier)
-        if x and y:  # Si on a des données valides
+        if x and y:
             plt.plot(x, y, label=legendes[i])
 
-    # Configuration du graphe
     plt.title("Graphiques des essais")
     plt.xlabel("Indice")
     plt.ylabel("Valeur")
     plt.legend()
     plt.grid(True)
-
-    # Affichage
     plt.show()
 
 # Création des éléments de l'interface graphique
@@ -137,6 +150,17 @@ acquisition_time_entry.pack(pady=5)
 ctk.CTkLabel(root, text="Nombre d'essais :").pack(pady=10)
 number_of_trials_entry = ctk.CTkEntry(root)
 number_of_trials_entry.pack(pady=5)
+
+ctk.CTkLabel(root, text="Préfixe pour les fichiers :").pack(pady=10)
+file_prefix_entry = ctk.CTkEntry(root)
+file_prefix_entry.pack(pady=5)
+
+ctk.CTkLabel(root, text="Répertoire de sortie :").pack(pady=10)
+output_directory_entry = ctk.CTkEntry(root)
+output_directory_entry.pack(pady=5)
+
+browse_button = ctk.CTkButton(root, text="Parcourir", command=browse_directory)
+browse_button.pack(pady=5)
 
 start_button = ctk.CTkButton(root, text="Démarrer la collecte", command=start_collecting_and_plot)
 start_button.pack(pady=20)
