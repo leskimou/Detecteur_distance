@@ -15,51 +15,119 @@ root.geometry("400x300")
 
 # Fonctions pour obtenir les valeurs utilisateur
 def get_acquisition_time():
-    return int(acquisition_time_entry.get())
+    try:
+        return int(acquisition_time_entry.get())
+    except ValueError:
+        messagebox.showerror("Erreur", "Veuillez entrer un entier valide pour la durée d'acquisition.")
+        return None
 
 def get_number_of_trials():
-    return int(number_of_trials_entry.get())
-
-# Fonction de collecte de données
-def start_collecting():
     try:
-        acquisition_time = get_acquisition_time()
-        num_trials = get_number_of_trials()
+        return int(number_of_trials_entry.get())
+    except ValueError:
+        messagebox.showerror("Erreur", "Veuillez entrer un entier valide pour le nombre d'essais.")
+        return None
 
+# Fonction pour collecter les données et afficher le graphique
+def start_collecting_and_plot():
+    acquisition_time = get_acquisition_time()
+    num_trials = get_number_of_trials()
+
+    if acquisition_time is None or num_trials is None:
+        return  # Arrêter si les entrées ne sont pas valides
+
+    fichiers = []
+
+    try:
         for trial in range(1, num_trials + 1):
+            # Demander à l'utilisateur de démarrer l'essai
+            if trial > 1:
+                proceed = messagebox.askyesno("Démarrer l'essai suivant",
+                                              f"Essai {trial - 1} terminé.\nVoulez-vous démarrer l'essai {trial} ?")
+                if not proceed:
+                    messagebox.showinfo("Collecte interrompue", "La collecte des données a été interrompue.")
+                    break
+
             file_name = f"data_essai_{trial}.txt"
+            fichiers.append(file_name)  # Ajouter le fichier à la liste pour le traçage
             values = []
             indices = []
 
             # Ouvrir la connexion série ici
-            with serial.Serial(port, baudrate) as ser:
-                start_time = time.time()
-                index = 1
-                while time.time() - start_time < acquisition_time:
-                    line = ser.readline().decode('utf-8').rstrip()
-                    if line:
-                        value = float(line)  # Convertir la valeur en float
-                        values.append(value)
-                        indices.append(index)
-                        index += 1
-                        time.sleep(0.1)
+            try:
+                with serial.Serial(port, baudrate, timeout=1) as ser:
+                    start_time = time.time()
+                    index = 1
+                    while time.time() - start_time < acquisition_time:
+                        try:
+                            line = ser.readline().decode('utf-8').rstrip()
+                            if line:
+                                value = float(line)  # Convertir la valeur en float
+                                values.append(value)
+                                indices.append(index)
+                                index += 1
+                        except ValueError:
+                            print(f"Valeur invalide reçue dans l'essai {trial}: '{line}'")
+                        time.sleep(0.1)  # Ajustez le délai si nécessaire
+            except serial.SerialException as e:
+                messagebox.showerror("Erreur Série", f"Impossible de se connecter au port série {port}.\n{e}")
+                return
 
             # Enregistrer les données dans un fichier
-            with open(file_name, 'a') as file:
-                file.write("Valeur;Indice\n")
-                for value, index in zip(values, indices):
-                    file.write(f"{value};{index}\n")
-
-            # Tracer le graphique
-            plt.plot(indices, values)
-            plt.xlabel('Indice')
-            plt.ylabel('Valeur')
-            plt.title(f"Essai {trial}")
-            plt.show()
+            try:
+                with open(file_name, 'w') as file:  # 'w' pour écraser les données existantes
+                    file.write("Indice Valeur\n")
+                    for index, value in zip(indices, values):
+                        file.write(f"{index} {value}\n")
+            except IOError as e:
+                messagebox.showerror("Erreur Fichier", f"Impossible d'écrire dans le fichier {file_name}.\n{e}")
+                return
 
         messagebox.showinfo("Succès", "Collecte terminée")
-    except ValueError:
-        messagebox.showerror("Erreur", "Veuillez entrer des valeurs numériques valides.")
+        plot_graph(fichiers)  # Afficher le graphique après la collecte
+    except Exception as e:
+        messagebox.showerror("Erreur", f"Une erreur inattendue est survenue.\n{e}")
+
+# Fonction pour tracer le graphique
+def plot_graph(fichiers):
+    # Fonction pour lire les données d'un fichier
+    def lire_donnees(fichier):
+        x = []
+        y = []
+        try:
+            with open(fichier, 'r') as f:
+                next(f)  # Ignorer la première ligne (en-tête)
+                for ligne in f:
+                    valeurs = ligne.strip().split()
+                    if len(valeurs) == 2:  # On s'assure qu'il y a deux colonnes
+                        x.append(int(valeurs[0]))
+                        y.append(float(valeurs[1]))
+        except FileNotFoundError:
+            print(f"Le fichier {fichier} est introuvable.")
+        except ValueError:
+            print(f"Erreur de format dans le fichier {fichier}.")
+        return x, y
+
+    legendes = [f"Essai {i}" for i in range(1, len(fichiers) + 1)]
+
+    # Création de la figure
+    plt.figure(figsize=(10, 6))
+
+    # Lecture et traçage des données
+    for i, fichier in enumerate(fichiers):
+        x, y = lire_donnees(fichier)
+        if x and y:  # Si on a des données valides
+            plt.plot(x, y, label=legendes[i])
+
+    # Configuration du graphe
+    plt.title("Graphiques des essais")
+    plt.xlabel("Indice")
+    plt.ylabel("Valeur")
+    plt.legend()
+    plt.grid(True)
+
+    # Affichage
+    plt.show()
 
 # Création des éléments de l'interface graphique
 ctk.CTkLabel(root, text="Durée d'acquisition (secondes) :").pack(pady=10)
@@ -70,7 +138,7 @@ ctk.CTkLabel(root, text="Nombre d'essais :").pack(pady=10)
 number_of_trials_entry = ctk.CTkEntry(root)
 number_of_trials_entry.pack(pady=5)
 
-start_button = ctk.CTkButton(root, text="Démarrer la collecte", command=start_collecting)
+start_button = ctk.CTkButton(root, text="Démarrer la collecte", command=start_collecting_and_plot)
 start_button.pack(pady=20)
 
 root.mainloop()
