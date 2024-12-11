@@ -1,30 +1,92 @@
-const unsigned int TRIG_PIN= 2;
-const unsigned int ECHO_PIN= 3;
-const unsigned int BAUD_RATE=9600;
+#include <LedControl.h>  // Assurez-vous d'ajouter cette bibliothèque via le gestionnaire de bibliothèques
+#include <ArduinoR4DigitDisplay.h>
+
+// Broches pour le capteur ultrason
+const unsigned int TRIG_PIN = 2;
+const unsigned int ECHO_PIN = 3;
+
+// Broches pour la matrice LED
+const int DIN_PIN = 8;   // Pin Data In du MAX7219
+const int CS_PIN = 9;    // Pin Chip Select du MAX7219
+const int CLK_PIN = 10;  // Pin Clock du MAX7219
+
+// LED intégrée
+const int LED_PIN = 13;
+
+// Autres constantes
+const unsigned int BAUD_RATE = 9600;
+
+// Initialisation de l'objet pour piloter la matrice LED (1 module)
+LedControl lc = LedControl(DIN_PIN, CLK_PIN, CS_PIN, 1);
 
 void setup() {
+  // Configurer les broches du capteur ultrason
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
+
+  // Configurer la LED intégrée
+  pinMode(LED_PIN, OUTPUT);
+
+  // Initialisation de la matrice LED
+  lc.shutdown(0, false);      // Allume la matrice
+  lc.setIntensity(0, 8);      // Régle la luminosité (0 à 15)
+  lc.clearDisplay(0);         // Efface l'affichage
+
+  // Initialisation de la communication série
   Serial.begin(BAUD_RATE);
 }
 
-void loop()  {
+void loop() {
+  // Mesurer la distance
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
-  digitalWrite(TRIG_PIN,  HIGH);
+  digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
-  
 
-  const unsigned long duration= pulseIn(ECHO_PIN, HIGH);
- int distance= duration/29/2;
-  if(duration==0){
-   Serial.println("Warning: no pulse from sensor");
-   }  
-  else{
-      
-      Serial.println(distance);
-      
+  unsigned long duration = pulseIn(ECHO_PIN, HIGH);
+  float distance = duration / 29.0 / 2.0;
+
+  // Vérifier si le capteur retourne une valeur valide
+  if (duration == 0) {
+    Serial.println("Warning: no pulse from sensor");
+    lc.clearDisplay(0); // Efface la matrice LED en cas d'erreur
+    digitalWrite(LED_PIN, LOW); // Éteint la LED intégrée
+  } else {
+    // Afficher la distance entière sur la matrice LED
+    displayDistanceOnMatrix((int)distance);
+
+    // Faire clignoter la LED intégrée en fonction de la distance
+    int blinkDelay = map((int)distance, 0, 100, 50, 1000); // Mapper la distance en cadence (50 ms à 1000 ms)
+    blinkLED(blinkDelay);
+
+    // Envoyer la distance via Serial
+    Serial.println(distance);
   }
- delay(100);
- }
+
+  delay(100);  // Délai avant la prochaine mesure
+}
+
+// Fonction pour afficher la distance entière sur la matrice LED
+void displayDistanceOnMatrix(int distance) {
+  lc.clearDisplay(0);  // Efface l'affichage précédent
+
+  // Convertir la distance en texte
+  char displayStr[4];
+  sprintf(displayStr, "%3d", distance);  // Ex: " 12"
+
+  // Afficher chaque caractère sur la matrice
+  for (int i = 0; i < 3; i++) {
+    if (displayStr[i] != ' ') {
+      lc.setChar(0, i, displayStr[i], false);
+    }
+  }
+}
+
+// Fonction pour faire clignoter la LED intégrée
+void blinkLED(int delayTime) {
+  digitalWrite(LED_PIN, HIGH);
+  delay(delayTime / 2);
+  digitalWrite(LED_PIN, LOW);
+  delay(delayTime / 2);
+}
